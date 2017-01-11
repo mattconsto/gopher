@@ -12,11 +12,13 @@ import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
@@ -31,6 +33,7 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
@@ -98,10 +101,10 @@ public class Gopher extends Application {
 			BorderPane contentArea = new BorderPane();
 			SplitPane splitPane = new SplitPane(treeView, contentArea);
 			Tab tab = new Tab(uri.host, splitPane);
-
+			
 			gopherTabs.getTabs().add(tab);
 			gopherTabs.getSelectionModel().select(gopherTabs.getTabs().size() - 1);
-
+			
 			treeView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
 				if(newValue == null) return;
 
@@ -141,8 +144,13 @@ public class Gopher extends Application {
 					} break;
 					case '1': { // DirectoryListing
 						try {
-							addGopherMenu(entry.uri, newValue);
-							newValue.setExpanded(true);
+							if(uri.getHost().equals(entry.uri.getHost())) {
+								addGopherMenu(entry.uri, newValue);
+								newValue.setExpanded(true);
+							} else {
+								gopherAddress.setText(entry.uri.toString());
+								addGopher(new ActionEvent());
+							}
 						} catch (IOException e) {
 							e.printStackTrace();
 						}
@@ -159,6 +167,41 @@ public class Gopher extends Application {
 					case '6': { // UUEncodedText
 					}break;
 					case '7': { // SearchEngineQuery
+						TextInputDialog dialog = new TextInputDialog();
+						dialog.setTitle("Search Query");
+						dialog.setHeaderText("Please enter your query");
+
+						// Traditional way to get the response value.
+						Optional<String> result = dialog.showAndWait();
+						if (result.isPresent()){
+							Socket socket;
+							try {
+								TextArea textArea = new TextArea();
+								textArea.setStyle("-fx-font-family: \"Courier New\";");
+								contentArea.centerProperty().set(textArea);
+	
+								socket = new Socket(entry.uri.getHost(), entry.uri.getPort());
+								DataOutputStream out	= new DataOutputStream(socket.getOutputStream());
+								BufferedReader   in	 = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+	
+								gopherAddress.setText(entry.uri.toString());
+	
+								out.writeBytes(entry.uri.getPath() + "\t" + result.get() + "\r\n");
+								out.flush();
+	
+								textArea.setText("");
+								while(true) {
+									String line = in.readLine();
+									if(line == null) break;
+									textArea.setText(textArea.getText() + line + "\n");
+								}
+	
+								socket.close();
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+						}
 					}
 					break;
 					case '8': { // TelnetSessionPointer
@@ -233,9 +276,9 @@ public class Gopher extends Application {
 	}
 
 	protected void addGopherMenu(RegexURI uri, TreeItem<GopherMenuEntry> root) throws UnknownHostException, IOException {
-		Socket		   socket = new Socket(uri.getHost(), uri.getPort());
-		DataOutputStream out	= new DataOutputStream(socket.getOutputStream());
-		BufferedReader   in	 = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+		Socket		     socket = new Socket(uri.getHost(), uri.getPort());
+		DataOutputStream out    = new DataOutputStream(socket.getOutputStream());
+		BufferedReader   in	    = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
 		System.out.println(uri);
 
